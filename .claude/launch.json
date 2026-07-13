@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "copo-dashboard-dev",
+      "runtimeExecutable": "/private/tmp/claude-501/-Users-nicole-Documents-Copo-dashboard/45adac9a-1c82-42a2-8dad-73ab31d591fb/scratchpad/nodejs/node-v22.14.0-darwin-arm64/bin/node",
+      "runtimeArgs": [
+        "/Users/nicole/Documents/Copo-dashboard/copo-dashboard/node_modules/next/dist/bin/next",
+        "dev"
+      ],
+      "port": 3000
+    }
+  ]
+}

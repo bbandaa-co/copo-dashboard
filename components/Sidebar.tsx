@@ -1,0 +1,137 @@
+"use client";
+
+import type { Contractor, Project, Status } from "@/lib/types";
+
+export type View =
+  | { type: "overview" }
+  | { type: "intel" }
+  | { type: "contractors" }
+  | { type: "calendar" }
+  | { type: "section"; section: string };
+
+const CONTRACT_FLAG_DAYS = 14;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function contractEndingSoon(contractor: Contractor) {
+  if (contractor.full_time || !contractor.end_date) return false;
+  const target = new Date(contractor.end_date + "T00:00:00").getTime();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const daysOut = (target - today.getTime()) / DAY_MS;
+  return daysOut >= 0 && daysOut <= CONTRACT_FLAG_DAYS;
+}
+
+const FIXED_SECTION_ORDER = ["Active clients", "Wrapping", "Pipeline", "Internal"];
+
+function dotClass(status: Status) {
+  if (status === "retainer") return "dot-retainer";
+  if (status === "wrapping") return "dot-wrap";
+  if (status === "pipeline") return "dot-pip";
+  return "dot-active";
+}
+
+export function sectionsInOrder(projects: Project[]): string[] {
+  const present = Array.from(new Set(projects.map((p) => p.section)));
+  const ordered = FIXED_SECTION_ORDER.filter(
+    (s) => present.includes(s) || s === "Internal"
+  );
+  const extra = present.filter((s) => !FIXED_SECTION_ORDER.includes(s)).sort();
+  return [...ordered, ...extra];
+}
+
+export default function Sidebar({
+  projects,
+  contractors,
+  view,
+  onSelectView,
+  onSelectProject,
+  onAddClient,
+  onAddSection,
+}: {
+  projects: Project[];
+  contractors: Contractor[];
+  view: View;
+  onSelectView: (v: View) => void;
+  onSelectProject: (section: string, projectId: string) => void;
+  onAddClient: (section: string) => void;
+  onAddSection: () => void;
+}) {
+  const sections = sectionsInOrder(projects);
+  const endingSoonCount = contractors.filter(contractEndingSoon).length;
+
+  return (
+    <aside className="sidebar">
+      <div className="logo">
+        <div className="logo-text">Company Policy</div>
+        <div className="logo-sub">State of Affairs</div>
+      </div>
+
+      <div className="nav-group">
+        <div
+          className={`nav-item ${view.type === "overview" ? "active" : ""}`}
+          onClick={() => onSelectView({ type: "overview" })}
+        >
+          <div className="nav-item-left">Overview</div>
+        </div>
+        <div
+          className={`nav-item ${view.type === "intel" ? "active" : ""}`}
+          onClick={() => onSelectView({ type: "intel" })}
+        >
+          <div className="nav-item-left">Key intel</div>
+        </div>
+        <div
+          className={`nav-item ${view.type === "contractors" ? "active" : ""}`}
+          onClick={() => onSelectView({ type: "contractors" })}
+        >
+          <div className="nav-item-left">Contractors</div>
+          {endingSoonCount > 0 && (
+            <span className="nav-count">{endingSoonCount}</span>
+          )}
+        </div>
+        <div
+          className={`nav-item ${view.type === "calendar" ? "active" : ""}`}
+          onClick={() => onSelectView({ type: "calendar" })}
+        >
+          <div className="nav-item-left">Calendar</div>
+        </div>
+      </div>
+
+      {sections.map((section) => {
+        const sectionProjects = projects.filter((p) => p.section === section);
+        return (
+          <div className="nav-group" key={section}>
+            <div className="nav-label">{section}</div>
+            {sectionProjects.map((p) => (
+              <div
+                className={`nav-item ${
+                  view.type === "section" && view.section === section
+                    ? "active"
+                    : ""
+                }`}
+                key={p.id}
+                onClick={() => onSelectProject(section, p.id)}
+              >
+                <div className="nav-item-left">
+                  <div className={`nav-dot ${dotClass(p.status)}`} />
+                  {p.name}
+                </div>
+              </div>
+            ))}
+            <button
+              className="nav-add"
+              onClick={() => onAddClient(section)}
+            >
+              + Add client
+            </button>
+          </div>
+        );
+      })}
+
+      <div className="sidebar-bottom">
+        <button className="add-section-btn" onClick={onAddSection}>
+          + Add section
+        </button>
+      </div>
+    </aside>
+  );
+}

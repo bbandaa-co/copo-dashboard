@@ -1,0 +1,524 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import type {
+  Milestone,
+  MilestoneKind,
+  PipelineStage,
+  Project,
+  ProjectPhase,
+  Status,
+  Task,
+  Week,
+} from "@/lib/types";
+import DatePicker from "./DatePicker";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const STAGE_LABELS: Record<PipelineStage, string> = {
+  talks: "Talks",
+  proposal: "Proposal",
+  refinement: "Refinement",
+  closed_won: "Closed · Won",
+  closed_lost: "Closed · Lost",
+  ghost: "Ghosted",
+};
+
+const CLOSED_STAGES: PipelineStage[] = ["closed_lost", "ghost"];
+
+const PHASE_LABELS: Record<ProjectPhase, string> = {
+  discovery: "Discovery",
+  strategy: "Strategy",
+  design: "Design",
+  production: "Production",
+  delivery: "Delivery",
+};
+
+function badgeClass(status: Status) {
+  if (status === "retainer") return "badge badge-retainer";
+  if (status === "wrapping") return "badge badge-wrap";
+  if (status === "pipeline") return "badge badge-pipeline";
+  return "badge badge-active";
+}
+
+function dotClass(status: Status, closed: boolean) {
+  if (closed) return "dot-wrap";
+  if (status === "retainer") return "dot-retainer";
+  if (status === "wrapping") return "dot-wrap";
+  if (status === "pipeline") return "dot-pip";
+  return "dot-active";
+}
+
+function formatDate(iso: string) {
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function isFlagged(dateIso: string, windowDays = 7) {
+  const target = new Date(dateIso + "T00:00:00").getTime();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const daysOut = (target - today.getTime()) / DAY_MS;
+  return daysOut >= 0 && daysOut <= windowDays;
+}
+
+function TaskRow({
+  task,
+  onToggle,
+  onDelete,
+  onEdit,
+  onMoveWeek,
+  moveDirection,
+}: {
+  task: Task;
+  onToggle: () => void;
+  onDelete: () => void;
+  onEdit: (title: string) => void;
+  onMoveWeek: () => void;
+  moveDirection: "next" | "prev";
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(task.title);
+
+  function commit() {
+    const trimmed = value.trim();
+    setEditing(false);
+    if (trimmed && trimmed !== task.title) onEdit(trimmed);
+    else setValue(task.title);
+  }
+
+  return (
+    <div className="task-row">
+      <button
+        className={`task-check ${task.done ? "checked" : ""}`}
+        onClick={onToggle}
+        aria-label="Toggle task"
+      />
+      {editing ? (
+        <input
+          className="task-edit-input"
+          value={value}
+          autoFocus
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") {
+              setValue(task.title);
+              setEditing(false);
+            }
+          }}
+        />
+      ) : (
+        <div
+          className={`task-label ${task.done ? "checked" : ""}`}
+          onDoubleClick={() => setEditing(true)}
+        >
+          {task.title}
+        </div>
+      )}
+      <button
+        className="task-move"
+        onClick={onMoveWeek}
+        title={moveDirection === "next" ? "Move to next week" : "Move to this week"}
+        aria-label="Move to other week"
+      >
+        {moveDirection === "next" ? "→" : "←"}
+      </button>
+      <button className="task-delete" onClick={onDelete}>
+        ×
+      </button>
+    </div>
+  );
+}
+
+function TaskColumn({
+  label,
+  tasks,
+  onToggle,
+  onDelete,
+  onAdd,
+  onEdit,
+  onMoveWeek,
+  moveDirection,
+}: {
+  label: string;
+  tasks: Task[];
+  onToggle: (id: string) => void;
+  onDelete: (id: string) => void;
+  onAdd: (title: string) => void;
+  onEdit: (id: string, title: string) => void;
+  onMoveWeek: (id: string) => void;
+  moveDirection: "next" | "prev";
+}) {
+  const [value, setValue] = useState("");
+  const [showCompleted, setShowCompleted] = useState(false);
+  const activeTasks = tasks.filter((t) => !t.done);
+  const completedTasks = tasks.filter((t) => t.done);
+
+  function submit() {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    onAdd(trimmed);
+    setValue("");
+  }
+
+  return (
+    <div>
+      <div className="col-head">{label}</div>
+      <div className="task-list">
+        {activeTasks.map((t) => (
+          <TaskRow
+            key={t.id}
+            task={t}
+            onToggle={() => onToggle(t.id)}
+            onDelete={() => onDelete(t.id)}
+            onEdit={(title) => onEdit(t.id, title)}
+            onMoveWeek={() => onMoveWeek(t.id)}
+            moveDirection={moveDirection}
+          />
+        ))}
+      </div>
+      {completedTasks.length > 0 && (
+        <div className="completed-section">
+          <button
+            className="completed-toggle"
+            onClick={() => setShowCompleted((v) => !v)}
+          >
+            {showCompleted ? "▾" : "▸"} Completed ({completedTasks.length})
+          </button>
+          {showCompleted && (
+            <div className="task-list">
+              {completedTasks.map((t) => (
+                <TaskRow
+                  key={t.id}
+                  task={t}
+                  onToggle={() => onToggle(t.id)}
+                  onDelete={() => onDelete(t.id)}
+                  onEdit={(title) => onEdit(t.id, title)}
+                  onMoveWeek={() => onMoveWeek(t.id)}
+                  moveDirection={moveDirection}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      <div className="add-task-row">
+        <input
+          className="add-task-input"
+          placeholder="Add task…"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+        />
+        <button className="add-task-btn" onClick={submit}>
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TimelineSection({
+  milestones,
+  onAdd,
+  onToggleCompleted,
+  onDelete,
+}: {
+  milestones: Milestone[];
+  onAdd: (title: string, date: string, kind: MilestoneKind) => void;
+  onToggleCompleted: (id: string, completed: boolean) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [date, setDate] = useState("");
+  const [kind, setKind] = useState<MilestoneKind>("milestone");
+
+  function submit() {
+    const trimmed = title.trim();
+    if (!trimmed || !date) return;
+    onAdd(trimmed, date, kind);
+    setTitle("");
+    setDate("");
+    setKind("milestone");
+  }
+
+  return (
+    <div className="timeline">
+      <div className="timeline-head">Timeline</div>
+      {milestones.map((m) => (
+        <div
+          className={`milestone ${m.completed ? "completed" : ""}`}
+          key={m.id}
+        >
+          <button
+            className={`task-check ${m.completed ? "checked" : ""}`}
+            onClick={() => onToggleCompleted(m.id, !m.completed)}
+            aria-label="Toggle completed"
+          />
+          <div className="milestone-date">{formatDate(m.date)}</div>
+          <div className="milestone-label">
+            {m.kind === "invoice" && (
+              <span className="milestone-kind">💰 Invoice — </span>
+            )}
+            {m.title}
+          </div>
+          {!m.completed && isFlagged(m.date) && (
+            <span className="milestone-flag">
+              ⚠ {m.kind === "invoice" ? "Send soon" : "Due soon"}
+            </span>
+          )}
+          <button className="task-delete" onClick={() => onDelete(m.id)}>
+            ×
+          </button>
+        </div>
+      ))}
+      <div className="add-milestone-row">
+        <DatePicker value={date} onChange={setDate} placeholder="Date" />
+        <input
+          className="add-task-input"
+          placeholder="Milestone or invoice…"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+        />
+        <select
+          className="modal-select milestone-kind-select"
+          value={kind}
+          onChange={(e) => setKind(e.target.value as MilestoneKind)}
+        >
+          <option value="milestone">Milestone</option>
+          <option value="invoice">Invoice</option>
+        </select>
+        <button className="add-task-btn" onClick={submit}>
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function ProjectCard({
+  project,
+  expanded,
+  onToggleExpand,
+  onToggleTask,
+  onDeleteTask,
+  onAddTask,
+  onEditTask,
+  onMoveTaskWeek,
+  onBlockerTextChange,
+  onResolveBlocker,
+  onChangeStage,
+  onMoveToActive,
+  onChangePhase,
+  onAddMilestone,
+  onToggleMilestoneCompleted,
+  onDeleteMilestone,
+}: {
+  project: Project;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onToggleTask: (taskId: string, done: boolean) => void;
+  onDeleteTask: (taskId: string) => void;
+  onAddTask: (week: Week, title: string) => void;
+  onEditTask: (taskId: string, title: string) => void;
+  onMoveTaskWeek: (taskId: string, week: Week) => void;
+  onBlockerTextChange: (blockerId: string, text: string) => void;
+  onResolveBlocker: (blockerId: string) => void;
+  onChangeStage: (stage: PipelineStage) => void;
+  onMoveToActive: () => void;
+  onChangePhase: (phase: ProjectPhase | null) => void;
+  onAddMilestone: (title: string, date: string, kind: MilestoneKind) => void;
+  onToggleMilestoneCompleted: (id: string, completed: boolean) => void;
+  onDeleteMilestone: (id: string) => void;
+}) {
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (expanded) {
+      cardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [expanded]);
+
+  const thisWeek = project.tasks.filter((t) => t.week === "this");
+  const nextWeek = project.tasks.filter((t) => t.week === "next");
+  const milestones = [...project.timeline_milestones].sort((a, b) =>
+    a.date.localeCompare(b.date)
+  );
+  const activeBlocker = project.blockers.find((b) => !b.resolved);
+  const isPipeline = project.status === "pipeline";
+  const stage = project.pipeline_stage ?? "talks";
+  const isClosed = isPipeline && CLOSED_STAGES.includes(stage);
+  const showPhase = project.status === "active" || project.status === "retainer";
+
+  return (
+    <div className={`project-card ${isClosed ? "closed" : ""}`} ref={cardRef}>
+      <div className="pc-header" onClick={onToggleExpand}>
+        <div className={`pc-dot ${dotClass(project.status, isClosed)}`} />
+        <div className="pc-info">
+          <div className="pc-name">{project.name}</div>
+          {project.team.length > 0 && (
+            <div className="pc-team">{project.team.join(" · ")}</div>
+          )}
+          <div className="pc-badges">
+            <span className={badgeClass(project.status)}>
+              {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
+            </span>
+            {isPipeline && (
+              <select
+                className="stage-select"
+                value={stage}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  onChangeStage(e.target.value as PipelineStage);
+                }}
+              >
+                {Object.entries(STAGE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            )}
+            {isPipeline && (
+              <button
+                className="btn-move-active"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMoveToActive();
+                }}
+              >
+                Move to Active →
+              </button>
+            )}
+            {showPhase && (
+              <select
+                className="phase-select"
+                value={project.project_phase ?? ""}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  onChangePhase(
+                    e.target.value ? (e.target.value as ProjectPhase) : null
+                  );
+                }}
+              >
+                <option value="">No phase set</option>
+                {Object.entries(PHASE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            )}
+            {activeBlocker && (
+              <span
+                className="badge badge-blocker"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!expanded) onToggleExpand();
+                }}
+              >
+                ⚠ {activeBlocker.text}
+              </span>
+            )}
+          </div>
+        </div>
+        <div
+          className="pc-chevron"
+          style={{ transform: expanded ? "rotate(0deg)" : "rotate(-90deg)" }}
+        >
+          ▾
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="pc-body">
+          <div className="two-col">
+            <TaskColumn
+              label="This week"
+              tasks={thisWeek}
+              onToggle={(id) => {
+                const t = project.tasks.find((x) => x.id === id);
+                if (t) onToggleTask(id, !t.done);
+              }}
+              onDelete={onDeleteTask}
+              onAdd={(title) => onAddTask("this", title)}
+              onEdit={onEditTask}
+              onMoveWeek={(id) => onMoveTaskWeek(id, "next")}
+              moveDirection="next"
+            />
+            <TaskColumn
+              label="Next week"
+              tasks={nextWeek}
+              onToggle={(id) => {
+                const t = project.tasks.find((x) => x.id === id);
+                if (t) onToggleTask(id, !t.done);
+              }}
+              onDelete={onDeleteTask}
+              onAdd={(title) => onAddTask("next", title)}
+              onEdit={onEditTask}
+              onMoveWeek={(id) => onMoveTaskWeek(id, "this")}
+              moveDirection="prev"
+            />
+          </div>
+
+          <TimelineSection
+            milestones={milestones}
+            onAdd={onAddMilestone}
+            onToggleCompleted={onToggleMilestoneCompleted}
+            onDelete={onDeleteMilestone}
+          />
+
+          {activeBlocker && (
+            <BlockerArea
+              key={activeBlocker.id}
+              text={activeBlocker.text}
+              onTextChange={(text) => onBlockerTextChange(activeBlocker.id, text)}
+              onResolve={() => onResolveBlocker(activeBlocker.id)}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BlockerArea({
+  text,
+  onTextChange,
+  onResolve,
+}: {
+  text: string;
+  onTextChange: (text: string) => void;
+  onResolve: () => void;
+}) {
+  const [value, setValue] = useState(text);
+
+  return (
+    <div className="blocker-area">
+      <div className="blocker-top">
+        <div className="blocker-tag">⚠ Blocker</div>
+        <button className="blocker-resolve" onClick={onResolve}>
+          Mark resolved
+        </button>
+      </div>
+      <textarea
+        className="blocker-input"
+        rows={2}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => {
+          if (value !== text) onTextChange(value);
+        }}
+      />
+    </div>
+  );
+}
