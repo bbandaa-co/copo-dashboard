@@ -33,6 +33,7 @@ export default function CalendarView({
   projects,
   onAddMilestone,
   onSelectProject,
+  calendarConnected,
 }: {
   projects: Project[];
   onAddMilestone: (
@@ -42,6 +43,7 @@ export default function CalendarView({
     kind: MilestoneKind
   ) => void;
   onSelectProject: (section: string, projectId: string) => void;
+  calendarConnected: boolean;
 }) {
   const [monthAnchor, setMonthAnchor] = useState(() => startOfMonth(new Date()));
   const [addForDate, setAddForDate] = useState<string | null>(null);
@@ -94,6 +96,13 @@ export default function CalendarView({
           <div className="week-title">{format(monthAnchor, "MMMM yyyy")}</div>
         </div>
         <div className="header-actions">
+          {calendarConnected ? (
+            <span className="badge badge-active">Google Calendar connected</span>
+          ) : (
+            <a className="btn" href="/api/auth/google/start">
+              Connect Google Calendar
+            </a>
+          )}
           <button className="btn" onClick={() => setMonthAnchor((m) => subMonths(m, 1))}>
             ‹
           </button>

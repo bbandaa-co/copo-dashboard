@@ -42,6 +42,7 @@ export interface Milestone {
   flagged: boolean;
   kind: MilestoneKind;
   completed: boolean;
+  gcal_event_id: string | null;
   created_at: string;
 }
 

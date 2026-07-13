@@ -49,6 +49,8 @@ export default function Home() {
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalSection, setModalSection] = useState("Active clients");
+  const [calendarConnected, setCalendarConnected] = useState(false);
+  const [calendarNotice, setCalendarNotice] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([fetchProjects(), fetchContractors()])
@@ -58,6 +60,21 @@ export default function Home() {
       })
       .catch((e) => setSyncError(String(e.message ?? e)))
       .finally(() => setLoading(false));
+
+    fetch("/api/calendar/status")
+      .then((res) => res.json())
+      .then((result) => setCalendarConnected(!!result.connected))
+      .catch(() => {});
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("calendar_connected")) {
+      setCalendarNotice("Google Calendar connected.");
+      setCalendarConnected(true);
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (params.get("calendar_error")) {
+      setCalendarNotice(`Google Calendar connection failed: ${params.get("calendar_error")}`);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
   }, []);
 
   function updateProject(projectId: string, updater: (p: Project) => Project) {
@@ -237,6 +254,33 @@ export default function Home() {
         ...p,
         timeline_milestones: [...p.timeline_milestones, milestone],
       }));
+
+      const projectName = projects.find((p) => p.id === projectId)?.name ?? "";
+      fetch("/api/calendar/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          milestoneId: milestone.id,
+          title,
+          date,
+          projectName,
+        }),
+      })
+        .then((res) => res.json())
+        .then((result) => {
+          if (result.pushed) {
+            updateProject(projectId, (p) => ({
+              ...p,
+              timeline_milestones: p.timeline_milestones.map((m) =>
+                m.id === milestone.id ? { ...m, gcal_event_id: result.eventId } : m
+              ),
+            }));
+          }
+        })
+        .catch(() => {
+          // Calendar push is best-effort; not connected or a transient
+          // failure shouldn't block the milestone itself from saving.
+        });
     } catch (e) {
       setSyncError(String((e as Error).message ?? e));
     }
@@ -261,6 +305,10 @@ export default function Home() {
   }
 
   async function handleDeleteMilestone(projectId: string, milestoneId: string) {
+    const project = projects.find((p) => p.id === projectId);
+    const eventId = project?.timeline_milestones.find((m) => m.id === milestoneId)
+      ?.gcal_event_id;
+
     updateProject(projectId, (p) => ({
       ...p,
       timeline_milestones: p.timeline_milestones.filter(
@@ -269,6 +317,13 @@ export default function Home() {
     }));
     try {
       await deleteMilestone(milestoneId);
+      if (eventId) {
+        fetch("/api/calendar/push", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ eventId }),
+        }).catch(() => {});
+      }
     } catch (e) {
       setSyncError(String((e as Error).message ?? e));
     }
@@ -382,6 +437,21 @@ export default function Home() {
           </div>
         )}
 
+        {calendarNotice && (
+          <div
+            style={{
+              background: "var(--accent-light)",
+              color: "var(--accent-text)",
+              padding: "8px 12px",
+              borderRadius: 6,
+              marginBottom: 16,
+              fontSize: 13,
+            }}
+          >
+            {calendarNotice}
+          </div>
+        )}
+
         {loading ? (
           <div className="empty-state">Loading…</div>
         ) : view.type === "intel" ? (
@@ -397,6 +467,7 @@ export default function Home() {
             projects={projects}
             onAddMilestone={handleAddMilestone}
             onSelectProject={selectProject}
+            calendarConnected={calendarConnected}
           />
         ) : view.type === "overview" ? (
           <>

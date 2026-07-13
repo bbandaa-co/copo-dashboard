@@ -65,3 +65,19 @@ alter table contractors disable row level security;
 alter table contractors add column start_date date;
 alter table contractors add column full_time boolean not null default false;
 alter table contractors alter column end_date drop not null;
+
+-- Single-row storage for Nicole's connected Google Calendar OAuth tokens.
+-- One personal-use dashboard, one Google account connected -- no per-user table needed.
+create table google_calendar_tokens (
+  id int primary key default 1,
+  access_token text not null,
+  refresh_token text not null,
+  expires_at timestamptz not null,
+  calendar_id text not null default 'primary',
+  updated_at timestamptz default now(),
+  constraint single_row check (id = 1)
+);
+alter table google_calendar_tokens disable row level security;
+
+-- Track which calendar event backs each milestone/invoice, so we can update/delete it later.
+alter table timeline_milestones add column gcal_event_id text;
