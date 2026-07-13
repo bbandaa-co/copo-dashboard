@@ -351,7 +351,7 @@ export default function ProjectCard({
   const milestones = [...project.timeline_milestones].sort((a, b) =>
     a.date.localeCompare(b.date)
   );
-  const activeBlocker = project.blockers.find((b) => !b.resolved);
+  const activeBlockers = project.blockers.filter((b) => !b.resolved);
   const isPipeline = project.status === "pipeline";
   const stage = project.pipeline_stage ?? "talks";
   const isClosed = isPipeline && CLOSED_STAGES.includes(stage);
@@ -418,17 +418,18 @@ export default function ProjectCard({
                 ))}
               </select>
             )}
-            {activeBlocker && (
+            {activeBlockers.map((blocker) => (
               <span
+                key={blocker.id}
                 className="badge badge-blocker"
                 onClick={(e) => {
                   e.stopPropagation();
                   if (!expanded) onToggleExpand();
                 }}
               >
-                ⚠ {activeBlocker.text}
+                ⚠ {blocker.text}
               </span>
-            )}
+            ))}
           </div>
         </div>
         <div
@@ -477,14 +478,14 @@ export default function ProjectCard({
             onDelete={onDeleteMilestone}
           />
 
-          {activeBlocker && (
+          {activeBlockers.map((blocker) => (
             <BlockerArea
-              key={activeBlocker.id}
-              text={activeBlocker.text}
-              onTextChange={(text) => onBlockerTextChange(activeBlocker.id, text)}
-              onResolve={() => onResolveBlocker(activeBlocker.id)}
+              key={blocker.id}
+              text={blocker.text}
+              onTextChange={(text) => onBlockerTextChange(blocker.id, text)}
+              onResolve={() => onResolveBlocker(blocker.id)}
             />
-          )}
+          ))}
         </div>
       )}
     </div>
