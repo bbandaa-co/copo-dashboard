@@ -1,5 +1,5 @@
 <!-- BEGIN:nextjs-agent-rules -->
-# This is NOT the Next.js you know
+# Next.js version note
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+Pinned to Next.js 15.5.20 (stable), not the latest 16.x line. This project was briefly on Next 16.2.9 but that version's build output wasn't served correctly by Vercel (every route 404'd despite a "Ready" build status), so it was downgraded. Don't upgrade to Next 16 without first confirming Vercel deploys it correctly.
 <!-- END:nextjs-agent-rules -->
